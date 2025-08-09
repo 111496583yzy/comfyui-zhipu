@@ -1,0 +1,188 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "ZhipuAPIConfig",
+      "pos": [100, 100],
+      "size": [300, 100],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "zhipu_client",
+          "type": "ZHIPU_CLIENT",
+          "links": [1, 3],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZhipuAPIConfig"
+      },
+      "widgets_values": ["YOUR_API_KEY_HERE"]
+    },
+    {
+      "id": 2,
+      "type": "ZhipuTextChat",
+      "pos": [450, 100],
+      "size": [400, 200],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "zhipu_client",
+          "type": "ZHIPU_CLIENT",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "STRING",
+          "links": [2],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZhipuTextChat"
+      },
+      "widgets_values": [
+        "你好，请介绍一下自己",
+        "glm-4.5",
+        0.7,
+        1024,
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "ShowText",
+      "pos": [900, 100],
+      "size": [300, 200],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 2,
+          "widget": {
+            "name": "text"
+          }
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShowText"
+      },
+      "widgets_values": [""]
+    },
+    {
+      "id": 4,
+      "type": "LoadImage",
+      "pos": [100, 350],
+      "size": [315, 314],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [4],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": ["example.png", "image"]
+    },
+    {
+      "id": 5,
+      "type": "ZhipuVisionChat",
+      "pos": [450, 350],
+      "size": [400, 250],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "zhipu_client",
+          "type": "ZHIPU_CLIENT",
+          "link": 3
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "STRING",
+          "links": [5],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZhipuVisionChat"
+      },
+      "widgets_values": [
+        "请详细描述这张图片的内容",
+        "glm-4v",
+        0.7,
+        1024,
+        ""
+      ]
+    },
+    {
+      "id": 6,
+      "type": "ShowText",
+      "pos": [900, 350],
+      "size": [300, 200],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 5,
+          "widget": {
+            "name": "text"
+          }
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShowText"
+      },
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "ZHIPU_CLIENT"],
+    [2, 2, 0, 3, 0, "STRING"],
+    [3, 1, 0, 5, 0, "ZHIPU_CLIENT"],
+    [4, 4, 0, 5, 1, "IMAGE"],
+    [5, 5, 0, 6, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+} 
