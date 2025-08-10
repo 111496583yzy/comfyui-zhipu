@@ -136,9 +136,12 @@ class ZhipuAPIClient:
             "messages": messages,
             "temperature": temperature_val,
             "stream": stream,
-            **kwargs
         }
-        # 视觉模型默认不显式传 top_p，避免参数组合校验异常；若用户显式通过 kwargs.top_p 覆盖，则保留
+        # 透传 request_id（用于绕过缓存/追踪请求）
+        if kwargs.get("request_id"):
+            payload["request_id"] = str(kwargs.get("request_id"))
+        
+        # 视觉模型默认不显式传 top_p
         if not self._is_vision_model(model):
             payload["top_p"] = top_p_val
         
@@ -159,7 +162,7 @@ class ZhipuAPIClient:
                 timeout=60
             )
             if response.status_code >= 400:
-                # 失败时强制输出一次精简调试信息（即使未开启 ZHIPU_DEBUG）
+                # 失败时强制输出一次精简调试信息
                 if not self.debug_enabled:
                     try:
                         brief = {
@@ -169,6 +172,7 @@ class ZhipuAPIClient:
                             "max_tokens": payload.get("max_tokens"),
                             "max_new_tokens": payload.get("max_new_tokens"),
                             "stream": payload.get("stream"),
+                            "request_id": payload.get("request_id"),
                             "messages_len": len(payload.get("messages", [])),
                         }
                         print("[ZHIPU_ERROR] Brief payload:", json.dumps(brief, ensure_ascii=False))
@@ -187,7 +191,8 @@ class ZhipuAPIClient:
                    model: str = "glm-4.5",
                    temperature: float = 0.7,
                    max_tokens: int = 1024,
-                   system_prompt: str = "") -> str:
+                   system_prompt: str = "",
+                   **kwargs) -> str:
         """
         简单的对话接口
         """
@@ -208,7 +213,8 @@ class ZhipuAPIClient:
             messages=messages,
             model=model,
             temperature=temperature_val,
-            max_tokens=max_tokens_val
+            max_tokens=max_tokens_val,
+            request_id=kwargs.get("request_id"),
         )
         
         # 提取回复内容
