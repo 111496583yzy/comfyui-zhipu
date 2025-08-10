@@ -57,6 +57,28 @@ class ZhipuAPIClient:
         
         return content
     
+    def _coerce_float(self, value: Any, default: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            v = float(default)
+        if v < min_value:
+            v = min_value
+        if v > max_value:
+            v = max_value
+        return v
+
+    def _coerce_int(self, value: Any, default: int, min_value: int = 1, max_value: Optional[int] = None) -> int:
+        try:
+            v = int(float(value))
+        except (TypeError, ValueError):
+            v = int(default)
+        if v < min_value:
+            v = min_value
+        if max_value is not None and v > max_value:
+            v = max_value
+        return v
+    
     def chat_completion(self,
                        messages: List[Dict[str, Any]],
                        model: str = "glm-4.5",
@@ -83,20 +105,25 @@ class ZhipuAPIClient:
         if model not in ALL_CHAT_MODELS:
             raise ValueError(f"不支持的对话模型: {model}. 支持的模型: {ALL_CHAT_MODELS}")
         
+        # 强制数值类型与边界，避免前端传入字符串导致 1210 参数错误
+        safe_temperature = self._coerce_float(temperature, 0.7, 0.0, 1.0)
+        safe_top_p = self._coerce_float(top_p, 0.9, 0.0, 1.0)
+        safe_max_tokens = self._coerce_int(max_tokens, 1024, 1, 8192)
+        
         payload = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
-            "top_p": top_p,
-            "stream": stream,
+            "temperature": safe_temperature,
+            "top_p": safe_top_p,
+            "stream": bool(stream),
             **kwargs
         }
         # 参数兼容：部分思考类/视觉模型要求使用 max_new_tokens
-        if isinstance(max_tokens, int) and max_tokens > 0:
+        if isinstance(safe_max_tokens, int) and safe_max_tokens > 0:
             if "thinking" in model or model.endswith("-thinking-flash") or model.startswith("glm-4.1v"):
-                payload["max_new_tokens"] = max_tokens
+                payload["max_new_tokens"] = safe_max_tokens
             else:
-                payload["max_tokens"] = max_tokens
+                payload["max_tokens"] = safe_max_tokens
         
         try:
             response = requests.post(
@@ -140,12 +167,12 @@ class ZhipuAPIClient:
             messages.append({"role": "system", "content": system_prompt.strip()})
         messages.append({"role": "user", "content": content})
         
-        # 调用API
+        # 调用API（同样进行数值参数的安全转换）
         response = self.chat_completion(
             messages=messages,
             model=model,
-            temperature=temperature,
-            max_tokens=max_tokens
+            temperature=self._coerce_float(temperature, 0.7, 0.0, 1.0),
+            max_tokens=self._coerce_int(max_tokens, 1024, 1, 8192)
         )
         
         # 提取回复内容
@@ -225,28 +252,20 @@ class ZhipuAPIClient:
             "model": model,
             "prompt": prompt,
             "duration": duration,
-            **kwargs
         }
-        
-        # 如果提供了参考图片，则添加到payload中
         if image_url:
             payload["image_url"] = image_url
+        payload.update(kwargs)
         
         try:
             response = requests.post(
                 ZHIPU_VIDEO_ENDPOINT,
                 headers=self.headers,
                 json=payload,
-                timeout=60
+                timeout=120
             )
-            if response.status_code >= 400:
-                raise Exception(f"视频生成API调用失败: {response.status_code} {response.text}")
-            initial = response.json()
-            # 异步任务：返回体含 task_status=PROCESSING，需要轮询异步结果
-            if isinstance(initial, dict) and initial.get("task_status") == "PROCESSING" and (initial.get("id") or initial.get("request_id")):
-                task_id = initial.get("id") or initial.get("request_id")
-                return self._poll_async_result(task_id, timeout_seconds=180)
-            return initial
+            response.raise_for_status()
+            return response.json()
         except requests.exceptions.RequestException as e:
             raise Exception(f"视频生成API调用失败: {str(e)}")
 
