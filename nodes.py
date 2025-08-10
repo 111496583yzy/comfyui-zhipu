@@ -7,6 +7,31 @@ from .api_client import ZhipuAPIClient
 from .config import (ALL_CHAT_MODELS, VISION_CHAT_MODELS, FREE_IMAGE_MODELS, 
                     FREE_VIDEO_MODELS, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TOP_P)
 
+# ---- helpers (module-level) ----
+
+def _coerce_float(v: Any, default: float, min_v: float = 0.0, max_v: float = 1.0) -> float:
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        x = float(default)
+    if x < min_v:
+        x = min_v
+    if x > max_v:
+        x = max_v
+    return x
+
+
+def _coerce_int(v: Any, default: int, min_v: int = 1, max_v: int = 8192) -> int:
+    try:
+        x = int(float(v))
+    except (TypeError, ValueError):
+        x = int(default)
+    if x < min_v:
+        x = min_v
+    if max_v is not None and x > max_v:
+        x = max_v
+    return x
+
 
 class ZhipuAPIConfig:
     """智谱AI API配置节点"""
@@ -80,28 +105,6 @@ class ZhipuTextChat:
     FUNCTION = "generate_text"
     CATEGORY = "ZhipuAI"
 
-    def _coerce_float(self, v: Any, default: float, min_v: float = 0.0, max_v: float = 1.0) -> float:
-        try:
-            x = float(v)
-        except (TypeError, ValueError):
-            x = float(default)
-        if x < min_v:
-            x = min_v
-        if x > max_v:
-            x = max_v
-        return x
-
-    def _coerce_int(self, v: Any, default: int, min_v: int = 1, max_v: int = 8192) -> int:
-        try:
-            x = int(float(v))
-        except (TypeError, ValueError):
-            x = int(default)
-        if x < min_v:
-            x = min_v
-        if max_v is not None and x > max_v:
-            x = max_v
-        return x
-
     def generate_text(self, 
                      zhipu_client: ZhipuAPIClient, 
                      prompt: str, 
@@ -128,8 +131,8 @@ class ZhipuTextChat:
             })
             
             # 数值稳态处理
-            t = self._coerce_float(temperature, DEFAULT_TEMPERATURE)
-            mx = self._coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
+            t = _coerce_float(temperature, DEFAULT_TEMPERATURE)
+            mx = _coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
             
             # 调用API
             response = zhipu_client.chat_completion(
@@ -220,8 +223,8 @@ class ZhipuVisionChat:
             safe_prompt = (prompt or "").strip() or "请描述这张图片的关键信息与要点。"
             
             # 数值稳态处理
-            t = self._coerce_float(temperature, DEFAULT_TEMPERATURE)
-            mx = self._coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
+            t = _coerce_float(temperature, DEFAULT_TEMPERATURE)
+            mx = _coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
             
             # 调用简单对话接口
             reply = zhipu_client.simple_chat(
@@ -342,8 +345,8 @@ class ZhipuChatHistory:
             })
             
             # 数值稳态处理
-            t = self._coerce_float(temperature, DEFAULT_TEMPERATURE)
-            mx = self._coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
+            t = _coerce_float(temperature, DEFAULT_TEMPERATURE)
+            mx = _coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
             
             # 调用API
             response = zhipu_client.chat_completion(
