@@ -1,36 +1,10 @@
 import os
 import torch
 from typing import Tuple, Dict, Any, Optional
-import json # Added for json.dumps in ZhipuImageGeneration and ZhipuVideoGeneration
 
 from .api_client import ZhipuAPIClient
 from .config import (ALL_CHAT_MODELS, VISION_CHAT_MODELS, FREE_IMAGE_MODELS, 
                     FREE_VIDEO_MODELS, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TOP_P)
-
-# ---- helpers (module-level) ----
-
-def _coerce_float(v: Any, default: float, min_v: float = 0.0, max_v: float = 1.0) -> float:
-    try:
-        x = float(v)
-    except (TypeError, ValueError):
-        x = float(default)
-    if x < min_v:
-        x = min_v
-    if x > max_v:
-        x = max_v
-    return x
-
-
-def _coerce_int(v: Any, default: int, min_v: int = 1, max_v: int = 8192) -> int:
-    try:
-        x = int(float(v))
-    except (TypeError, ValueError):
-        x = int(default)
-    if x < min_v:
-        x = min_v
-    if max_v is not None and x > max_v:
-        x = max_v
-    return x
 
 
 class ZhipuAPIConfig:
@@ -124,22 +98,17 @@ class ZhipuTextChat:
                 })
             
             # 添加用户消息
-            user_prompt = (prompt or "").strip() or "请直接回答用户的问题。"
             messages.append({
                 "role": "user",
-                "content": user_prompt
+                "content": prompt
             })
-            
-            # 数值稳态处理
-            t = _coerce_float(temperature, DEFAULT_TEMPERATURE)
-            mx = _coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
             
             # 调用API
             response = zhipu_client.chat_completion(
                 messages=messages,
                 model=model,
-                temperature=t,
-                max_tokens=mx
+                temperature=temperature,
+                max_tokens=max_tokens
             )
             
             # 提取回复内容
@@ -220,19 +189,15 @@ class ZhipuVisionChat:
                 image_np = image
             
             # 若未填写文本提示，提供一个默认提示，避免只有图片导致400
-            safe_prompt = (prompt or "").strip() or "请描述这张图片的关键信息与要点。"
-            
-            # 数值稳态处理
-            t = _coerce_float(temperature, DEFAULT_TEMPERATURE)
-            mx = _coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
+            safe_prompt = prompt.strip() or "请描述这张图片的关键信息与要点。"
             
             # 调用简单对话接口
             reply = zhipu_client.simple_chat(
                 prompt=safe_prompt,
                 image=image_np,
                 model=model,
-                temperature=t,
-                max_tokens=mx,
+                temperature=temperature,
+                max_tokens=max_tokens,
                 system_prompt=system_prompt
             )
             
@@ -344,16 +309,12 @@ class ZhipuChatHistory:
                 "content": content
             })
             
-            # 数值稳态处理
-            t = _coerce_float(temperature, DEFAULT_TEMPERATURE)
-            mx = _coerce_int(max_tokens, DEFAULT_MAX_TOKENS)
-            
             # 调用API
             response = zhipu_client.chat_completion(
                 messages=messages,
                 model=model,
-                temperature=t,
-                max_tokens=mx
+                temperature=temperature,
+                max_tokens=max_tokens
             )
             
             # 提取回复内容
@@ -402,8 +363,7 @@ class ZhipuImageGeneration:
                     "max": 4,
                     "step": 1
                 }),
-            },
-            "optional": {}
+            }
         }
 
     RETURN_TYPES = ("STRING", "STRING")
@@ -411,36 +371,41 @@ class ZhipuImageGeneration:
     FUNCTION = "generate_image"
     CATEGORY = "ZhipuAI"
 
-    def generate_image(self,
-                      zhipu_client: ZhipuAPIClient,
+    def generate_image(self, 
+                      zhipu_client: ZhipuAPIClient, 
                       prompt: str,
                       model: str = "cogview-3-flash",
                       size: str = "1024x1024",
                       quality: str = "standard",
                       n: int = 1) -> Tuple[str, str]:
+        """生成图片"""
         try:
-            result = zhipu_client.generate_image(
+            response = zhipu_client.generate_image(
                 prompt=prompt,
                 model=model,
                 size=size,
-                n=n,
-                quality=quality
+                quality=quality,
+                n=n
             )
             
-            # 提取URL列表
-            urls = []
-            if isinstance(result, dict):
-                data = result.get("data") or result.get("choices") or []
-                # 按常见返回格式解析
-                for item in data:
-                    url = item.get("url") or item.get("image_url") or item.get("b64_json")
-                    if url:
-                        urls.append(str(url))
-            
-            urls_text = "\n".join(urls) if urls else ""
-            return (urls_text, json.dumps(result, ensure_ascii=False))
+            # 提取图片URLs
+            if "data" in response and len(response["data"]) > 0:
+                image_urls = []
+                for item in response["data"]:
+                    if "url" in item:
+                        image_urls.append(item["url"])
+                
+                urls_text = "\n".join(image_urls)
+                info_text = f"成功生成 {len(image_urls)} 张图片，模型: {model}"
+                
+                return (urls_text, info_text)
+            else:
+                raise Exception(f"API返回格式异常: {response}")
+                
         except Exception as e:
-            return ("", f"图片生成失败: {str(e)}")
+            error_msg = f"智谱AI图片生成失败: {str(e)}"
+            print(error_msg)
+            return ("", error_msg)
 
 
 class ZhipuVideoGeneration:
@@ -453,7 +418,7 @@ class ZhipuVideoGeneration:
                 "zhipu_client": ("ZHIPU_CLIENT",),
                 "prompt": ("STRING", {
                     "multiline": True,
-                    "default": "一个小球在草地上弹跳",
+                    "default": "一只猫咪在花园里玩耍",
                     "placeholder": "请输入视频描述"
                 }),
                 "model": (FREE_VIDEO_MODELS, {
@@ -468,9 +433,8 @@ class ZhipuVideoGeneration:
             },
             "optional": {
                 "image_url": ("STRING", {
-                    "multiline": False,
                     "default": "",
-                    "placeholder": "可选：参考图片URL"
+                    "placeholder": "可选：参考图片URL（图生视频）"
                 }),
             }
         }
@@ -481,30 +445,47 @@ class ZhipuVideoGeneration:
     CATEGORY = "ZhipuAI"
 
     def generate_video(self, 
-                      zhipu_client: ZhipuAPIClient,
+                      zhipu_client: ZhipuAPIClient, 
                       prompt: str,
                       model: str = "cogvideox-flash",
                       duration: int = 5,
                       image_url: str = "") -> Tuple[str, str]:
+        """生成视频"""
         try:
-            result = zhipu_client.generate_video(
+            # 准备参数
+            kwargs = {}
+            if image_url.strip():
+                kwargs["image_url"] = image_url.strip()
+            
+            response = zhipu_client.generate_video(
                 prompt=prompt,
                 model=model,
-                image_url=image_url.strip() or None,
-                duration=int(duration)
+                duration=duration,
+                **kwargs
             )
-            # 常见返回格式拿 URL
-            video_url = ""
-            if isinstance(result, dict):
-                if result.get("data") and isinstance(result.get("data"), list):
-                    first = result["data"][0]
-                    video_url = first.get("url") or first.get("video_url") or ""
-                elif result.get("video_result") and isinstance(result.get("video_result"), list):
-                    first = result["video_result"][0]
-                    video_url = first.get("url") or ""
-            return (video_url, json.dumps(result, ensure_ascii=False))
+            
+            # 处理异步/同步两种格式
+            # 异步查询返回可能包含 task_status 与 url 字段
+            if "video_result" in response and response.get("video_result"):
+                video_url = response["video_result"][0].get("url", "")
+                info_text = f"成功生成视频，时长: {duration}秒，模型: {model}"
+                return (video_url, info_text)
+            if "data" in response and response.get("data"):
+                item = response["data"][0]
+                video_url = item.get("url", "") or item.get("video_url", "")
+                if video_url:
+                    info_text = f"成功生成视频，时长: {duration}秒，模型: {model}"
+                    return (video_url, info_text)
+            # 有些异步查询成功后直接在根字段给 url
+            if response.get("url"):
+                return (response.get("url"), f"成功生成视频，时长: {duration}秒，模型: {model}")
+            # 仍未拿到URL
+            raise Exception(f"API返回格式异常: {response}")
+                
         except Exception as e:
-            return ("", f"视频生成失败: {str(e)}")
+            error_msg = f"智谱AI视频生成失败: {str(e)}"
+            print(error_msg)
+            return ("", error_msg)
 
 
 # 节点映射

@@ -1,6 +1,7 @@
 import requests
 import json
 import base64
+import os
 from typing import Dict, Any, Optional, List, Union
 from PIL import Image
 import io
@@ -19,7 +20,39 @@ class ZhipuAPIClient:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
+        self.debug_enabled = os.environ.get("ZHIPU_DEBUG", "0") in ("1", "true", "True")
     
+    def _safe_float(self, value: Any, default: Optional[float] = None, min_value: Optional[float] = None, max_value: Optional[float] = None) -> Optional[float]:
+        """将任意输入安全转换为 float，并裁剪范围。转换失败返回 default。"""
+        try:
+            if value is None:
+                return default
+            # 允许字符串数字，例如 "0.70"
+            result = float(value)
+            if min_value is not None and result < min_value:
+                result = min_value
+            if max_value is not None and result > max_value:
+                result = max_value
+            # 统一保留三位小数，避免 0.7000000000000002 之类的浮点误差
+            result = round(result, 3)
+            return result
+        except (TypeError, ValueError):
+            return default
+    
+    def _safe_int(self, value: Any, default: Optional[int] = None, min_value: Optional[int] = None, max_value: Optional[int] = None) -> Optional[int]:
+        """将任意输入安全转换为 int，并裁剪范围。转换失败返回 default。"""
+        try:
+            if value is None:
+                return default
+            result = int(value)
+            if min_value is not None and result < min_value:
+                result = min_value
+            if max_value is not None and result > max_value:
+                result = max_value
+            return result
+        except (TypeError, ValueError):
+            return default
+
     def image_to_base64(self, image: Union[Image.Image, np.ndarray]) -> str:
         """将图片转换为base64编码"""
         if isinstance(image, np.ndarray):
@@ -57,27 +90,27 @@ class ZhipuAPIClient:
         
         return content
     
-    def _coerce_float(self, value: Any, default: float, min_value: float = 0.0, max_value: float = 1.0) -> float:
+    def _is_vision_model(self, model: str) -> bool:
+        m = (model or "").lower()
+        return m.startswith("glm-4v") or m.startswith("glm-4.1v")
+    
+    def _debug_print_payload(self, payload: Dict[str, Any]):
+        if not self.debug_enabled:
+            return
         try:
-            v = float(value)
-        except (TypeError, ValueError):
-            v = float(default)
-        if v < min_value:
-            v = min_value
-        if v > max_value:
-            v = max_value
-        return v
-
-    def _coerce_int(self, value: Any, default: int, min_value: int = 1, max_value: Optional[int] = None) -> int:
-        try:
-            v = int(float(value))
-        except (TypeError, ValueError):
-            v = int(default)
-        if v < min_value:
-            v = min_value
-        if max_value is not None and v > max_value:
-            v = max_value
-        return v
+            sanitized = json.loads(json.dumps(payload))  # deep copy
+            # 截断图片 base64，避免刷屏
+            for msg in sanitized.get("messages", []):
+                content = msg.get("content")
+                if isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "image_url":
+                            url = part.get("image_url", {}).get("url", "")
+                            if isinstance(url, str) and url.startswith("data:image") and len(url) > 128:
+                                part["image_url"]["url"] = url[:128] + "...<truncated>"
+            print("[ZHIPU_DEBUG] Request payload:", json.dumps(sanitized, ensure_ascii=False))
+        except Exception:
+            pass
     
     def chat_completion(self,
                        messages: List[Dict[str, Any]],
@@ -89,41 +122,34 @@ class ZhipuAPIClient:
                        **kwargs) -> Dict[str, Any]:
         """
         调用智谱AI对话补全接口
-        
-        Args:
-            messages: 对话消息列表
-            model: 使用的模型名称
-            temperature: 温度参数 (0-1)
-            max_tokens: 最大输出token数
-            top_p: 核采样参数
-            stream: 是否流式输出
-            **kwargs: 其他参数
-        
-        Returns:
-            API响应结果
         """
         if model not in ALL_CHAT_MODELS:
             raise ValueError(f"不支持的对话模型: {model}. 支持的模型: {ALL_CHAT_MODELS}")
         
-        # 强制数值类型与边界，避免前端传入字符串导致 1210 参数错误
-        safe_temperature = self._coerce_float(temperature, 0.7, 0.0, 1.0)
-        safe_top_p = self._coerce_float(top_p, 0.9, 0.0, 1.0)
-        safe_max_tokens = self._coerce_int(max_tokens, 1024, 1, 8192)
+        # 强制类型与范围
+        temperature_val = self._safe_float(temperature, default=0.7, min_value=0.0, max_value=1.0)
+        top_p_val = self._safe_float(top_p, default=0.9, min_value=0.0, max_value=1.0)
+        max_tokens_val = self._safe_int(max_tokens, default=1024, min_value=1, max_value=8192)
         
-        payload = {
+        payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": safe_temperature,
-            "top_p": safe_top_p,
-            "stream": bool(stream),
+            "temperature": temperature_val,
+            "stream": stream,
             **kwargs
         }
+        # 视觉模型默认不显式传 top_p，避免参数组合校验异常；若用户显式通过 kwargs.top_p 覆盖，则保留
+        if not self._is_vision_model(model):
+            payload["top_p"] = top_p_val
+        
         # 参数兼容：部分思考类/视觉模型要求使用 max_new_tokens
-        if isinstance(safe_max_tokens, int) and safe_max_tokens > 0:
+        if isinstance(max_tokens_val, int) and max_tokens_val > 0:
             if "thinking" in model or model.endswith("-thinking-flash") or model.startswith("glm-4.1v"):
-                payload["max_new_tokens"] = safe_max_tokens
+                payload["max_new_tokens"] = max_tokens_val
             else:
-                payload["max_tokens"] = safe_max_tokens
+                payload["max_tokens"] = max_tokens_val
+        
+        self._debug_print_payload(payload)
         
         try:
             response = requests.post(
@@ -133,6 +159,23 @@ class ZhipuAPIClient:
                 timeout=60
             )
             if response.status_code >= 400:
+                # 失败时强制输出一次精简调试信息（即使未开启 ZHIPU_DEBUG）
+                if not self.debug_enabled:
+                    try:
+                        brief = {
+                            "model": payload.get("model"),
+                            "temperature": payload.get("temperature"),
+                            "top_p": payload.get("top_p", "<omitted>"),
+                            "max_tokens": payload.get("max_tokens"),
+                            "max_new_tokens": payload.get("max_new_tokens"),
+                            "stream": payload.get("stream"),
+                            "messages_len": len(payload.get("messages", [])),
+                        }
+                        print("[ZHIPU_ERROR] Brief payload:", json.dumps(brief, ensure_ascii=False))
+                    except Exception:
+                        pass
+                else:
+                    self._debug_print_payload(payload)
                 raise Exception(f"API调用失败: {response.status_code} {response.text}")
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -147,17 +190,6 @@ class ZhipuAPIClient:
                    system_prompt: str = "") -> str:
         """
         简单的对话接口
-        
-        Args:
-            prompt: 用户输入的文本
-            image: 可选的图片输入
-            model: 使用的模型
-            temperature: 温度参数
-            max_tokens: 最大token数
-            system_prompt: 系统提示词，将作为 role=system 注入
-        
-        Returns:
-            AI的回复文本
         """
         # 准备消息内容（用户消息，可能包含文本+图片）
         content = self.prepare_message_content(prompt, image)
@@ -167,12 +199,16 @@ class ZhipuAPIClient:
             messages.append({"role": "system", "content": system_prompt.strip()})
         messages.append({"role": "user", "content": content})
         
-        # 调用API（同样进行数值参数的安全转换）
+        # 统一做数值校验
+        temperature_val = self._safe_float(temperature, default=0.7, min_value=0.0, max_value=1.0)
+        max_tokens_val = self._safe_int(max_tokens, default=1024, min_value=1, max_value=8192)
+        
+        # 调用API
         response = self.chat_completion(
             messages=messages,
             model=model,
-            temperature=self._coerce_float(temperature, 0.7, 0.0, 1.0),
-            max_tokens=self._coerce_int(max_tokens, 1024, 1, 8192)
+            temperature=temperature_val,
+            max_tokens=max_tokens_val
         )
         
         # 提取回复内容
@@ -252,20 +288,28 @@ class ZhipuAPIClient:
             "model": model,
             "prompt": prompt,
             "duration": duration,
+            **kwargs
         }
+        
+        # 如果提供了参考图片，则添加到payload中
         if image_url:
             payload["image_url"] = image_url
-        payload.update(kwargs)
         
         try:
             response = requests.post(
                 ZHIPU_VIDEO_ENDPOINT,
                 headers=self.headers,
                 json=payload,
-                timeout=120
+                timeout=60
             )
-            response.raise_for_status()
-            return response.json()
+            if response.status_code >= 400:
+                raise Exception(f"视频生成API调用失败: {response.status_code} {response.text}")
+            initial = response.json()
+            # 异步任务：返回体含 task_status=PROCESSING，需要轮询异步结果
+            if isinstance(initial, dict) and initial.get("task_status") == "PROCESSING" and (initial.get("id") or initial.get("request_id")):
+                task_id = initial.get("id") or initial.get("request_id")
+                return self._poll_async_result(task_id, timeout_seconds=180)
+            return initial
         except requests.exceptions.RequestException as e:
             raise Exception(f"视频生成API调用失败: {str(e)}")
 
