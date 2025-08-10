@@ -114,6 +114,24 @@
 6. 设置视频时长
 7. 执行工作流获得视频URL
 
+## 缓存绕过与随机种子（ComfyUI）
+
+ComfyUI 会对相同输入进行缓存，导致“内容一样不重新运行”。本插件在如下节点新增 `seed` 参数，并将其透传为接口的 `request_id`，每次修改 `seed` 都会强制绕过缓存、触发重新执行：
+
+- `ZhipuTextChat`（智谱AI文本对话）
+- `ZhipuVisionChat`（智谱AI视觉对话）
+- `ZhipuChatHistory`（智谱AI对话历史）
+
+使用建议：
+- 不需要随机性时保持 `seed=0`（不传 `request_id`），需要强制重跑时改一个整数即可。
+- 与 `temperature/top_p` 等采样参数相互独立，不会影响生成质量，只用于“换一个请求 ID”。
+
+可选调试：
+- 启动前设置环境变量可打印请求载荷（自动截断图片base64）：
+  ```bash
+  export ZHIPU_DEBUG=1
+  ```
+
 ## 节点说明
 
 ### ZhipuAPIConfig - 智谱AI API配置
