@@ -36,7 +36,11 @@ PAID_CHAT_MODELS = [
     "glm-4-long",
     "glm-4-flashx",
     "glm-4v",
-    "glm-4v-plus"
+    "glm-4v-plus",
+    # 新增可选视觉与版本化模型
+    "glm-4.5v",
+    "glm-4v-plus-0111",
+    "glm-4.1v-thinking-flashx",
 ]
 
 # 所有对话模型（免费+付费）
@@ -50,6 +54,10 @@ VISION_CHAT_MODELS = [
     # 付费视觉模型
     "glm-4v",                   # GLM-4V标准版
     "glm-4v-plus",              # GLM-4V增强版
+    # 新增视觉模型变体
+    "glm-4.5v",
+    "glm-4v-plus-0111",
+    "glm-4.1v-thinking-flashx",
 ]
 
 # 默认参数

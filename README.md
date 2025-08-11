@@ -32,6 +32,9 @@
 - `glm-4-flashx` - GLM-4快速版
 - `glm-4v` - GLM-4视觉模型 👁️**支持视觉**
 - `glm-4v-plus` - GLM-4视觉增强版 👁️**支持视觉**
+- `glm-4.5v` - GLM-4.5 视觉模型 👁️
+- `glm-4v-plus-0111` - GLM-4V增强版0111 👁️
+- `glm-4.1v-thinking-flashx` - GLM-4.1V思考版（增强变体）👁️
 
 ### 🎨 图片生成模型
 - `cogview-3-flash` - Cogview-3快速版（免费）⭐

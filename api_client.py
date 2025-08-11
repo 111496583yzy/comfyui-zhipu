@@ -92,7 +92,7 @@ class ZhipuAPIClient:
     
     def _is_vision_model(self, model: str) -> bool:
         m = (model or "").lower()
-        return m.startswith("glm-4v") or m.startswith("glm-4.1v")
+        return m.startswith("glm-4v") or m.startswith("glm-4.1v") or m.startswith("glm-4.5v")
     
     def _debug_print_payload(self, payload: Dict[str, Any]):
         if not self.debug_enabled:
@@ -109,6 +109,23 @@ class ZhipuAPIClient:
                             if isinstance(url, str) and url.startswith("data:image") and len(url) > 128:
                                 part["image_url"]["url"] = url[:128] + "...<truncated>"
             print("[ZHIPU_DEBUG] Request payload:", json.dumps(sanitized, ensure_ascii=False))
+        except Exception:
+            pass
+    
+    def _debug_print_response(self, data: Dict[str, Any]):
+        if not self.debug_enabled:
+            return
+        try:
+            brief = {
+                "has_choices": isinstance(data, dict) and bool(data.get("choices")),
+                "num_choices": len(data.get("choices", [])) if isinstance(data.get("choices"), list) else 0,
+                "finish_reason": (data.get("choices", [{}])[0] or {}).get("finish_reason") if data.get("choices") else None,
+                "has_video_result": bool(data.get("video_result")),
+                "has_web_search": bool(data.get("web_search")),
+                "content_preview": ((data.get("choices", [{}])[0] or {}).get("message", {}).get("content") or "")[:120],
+                "reasoning_preview": ((data.get("choices", [{}])[0] or {}).get("message", {}).get("reasoning_content") or "")[:120],
+            }
+            print("[ZHIPU_DEBUG] Response brief:", json.dumps(brief, ensure_ascii=False))
         except Exception:
             pass
     
@@ -147,7 +164,7 @@ class ZhipuAPIClient:
         
         # 参数兼容：部分思考类/视觉模型要求使用 max_new_tokens
         if isinstance(max_tokens_val, int) and max_tokens_val > 0:
-            if "thinking" in model or model.endswith("-thinking-flash") or model.startswith("glm-4.1v"):
+            if "thinking" in model or model.endswith("-thinking-flash") or model.startswith("glm-4.1v") or model.startswith("glm-4.5v"):
                 payload["max_new_tokens"] = max_tokens_val
             else:
                 payload["max_tokens"] = max_tokens_val
@@ -181,7 +198,9 @@ class ZhipuAPIClient:
                 else:
                     self._debug_print_payload(payload)
                 raise Exception(f"API调用失败: {response.status_code} {response.text}")
-            return response.json()
+            data = response.json()
+            self._debug_print_response(data)
+            return data
         except requests.exceptions.RequestException as e:
             raise Exception(f"API调用失败: {str(e)}")
     
@@ -217,9 +236,25 @@ class ZhipuAPIClient:
             request_id=kwargs.get("request_id"),
         )
         
-        # 提取回复内容
-        if "choices" in response and len(response["choices"]) > 0:
-            return response["choices"][0]["message"]["content"]
+        # 提取回复内容（兼容 reasoning_content / audio 等）
+        if isinstance(response, dict) and "choices" in response and len(response.get("choices", [])) > 0:
+            msg = (response["choices"][0] or {}).get("message", {})
+            text = (msg.get("content") or "").strip()
+            if not text:
+                text = (msg.get("reasoning_content") or "").strip()
+            if not text and isinstance(msg.get("audio"), dict):
+                audio_id = msg["audio"].get("id")
+                if audio_id:
+                    text = f"[音频返回] audio_id={audio_id}"
+            if text:
+                return text
+            # 调试：如果仍然拿不到文本，打印一份简要信息
+            if self.debug_enabled:
+                try:
+                    print("[ZHIPU_DEBUG] Empty content, raw message:", json.dumps(msg, ensure_ascii=False)[:500])
+                except Exception:
+                    pass
+            raise Exception(f"API未返回文本内容: {response}")
         else:
             raise Exception(f"API返回格式异常: {response}")
     
