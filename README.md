@@ -11,6 +11,7 @@
 - ✅ **视频生成**：使用CogVideoX-Flash免费生成短视频
 - ✅ **参数调节**：支持温度、最大token数等参数自定义
 - ✅ **错误处理**：完善的错误提示和异常处理
+- ✅ **本地保存API Key**：首次输入后保存到插件目录的 `config.json`，后续可自动读取
 
 ## 支持的模型
 
@@ -77,7 +78,7 @@
 
 #### 文本对话
 
-1. 添加"智谱AI API配置"节点，输入您的API Key
+1. 添加"智谱AI API配置"节点，输入您的API Key（可勾选“记住”以保存到本地）
 2. 添加"智谱AI文本对话"节点
 3. 连接API配置节点到文本对话节点
 4. 在文本对话节点中输入您的问题
@@ -135,11 +136,33 @@ ComfyUI 会对相同输入进行缓存，导致“内容一样不重新运行”
   export ZHIPU_DEBUG=1
   ```
 
+## API Key 持久化
+
+- 本插件将 API Key 持久化保存到插件目录：`config.json`
+  - 首次在 `ZhipuAPIConfig` 节点输入 API Key 且勾选“记住”，会写入插件目录的 `config.json`
+  - 下次运行若不填写 `api_key`，将自动读取该文件
+
+- 插件目录示例：
+  - ComfyUI: `ComfyUI/custom_nodes/zhipu-comfyui/config.json`
+  - 源码仓库: `comfyui-zhipu/config.json`
+
+- 手动写入/修改示例：
+  ```bash
+  # 编辑插件目录下的 config.json（示例路径请替换为你的实际路径）
+  cat > /path/to/your/plugin/config.json <<'EOF'
+  {"api_key": "YOUR_API_KEY_HERE"}
+  EOF
+  chmod 600 /path/to/your/plugin/config.json
+  ```
+
+> 安全提示：API Key 会以纯文本存储在插件目录，仅对当前用户可读（`0600` 权限）。请勿将此文件提交到公共仓库或分享给他人。
+
 ## 节点说明
 
 ### ZhipuAPIConfig - 智谱AI API配置
 **输入**：
-- `api_key` (必需)：智谱AI的API Key
+- `api_key` (可留空)：智谱AI的API Key。留空时将读取插件目录的 `config.json`
+- `remember` (可选，默认开启)：是否在首次输入后保存到本地
 
 **输出**：
 - `zhipu_client`：智谱AI客户端实例
@@ -241,8 +264,8 @@ ComfyUI 会对相同输入进行缓存，导致“内容一样不重新运行”
 ### 常见错误及解决方案
 
 1. **API Key不能为空**
-   - 检查是否正确输入了API Key
-   - 确认API Key格式正确
+   - 在 `ZhipuAPIConfig` 节点输入一次 API Key 并开启“记住”，下次可留空自动读取
+   - 或手动编辑插件目录 `config.json`
 
 2. **不支持的模型**
    - 确认选择的模型在支持列表中
@@ -258,6 +281,14 @@ ComfyUI 会对相同输入进行缓存，导致“内容一样不重新运行”
    - 检查图片大小是否过大
 
 ## 更新日志
+
+### v1.2.1
+- 🔧 移除环境变量读取，统一从插件目录 `config.json` 读取/写入 API Key
+
+### v1.2.0
+- ✨ 引入 API Key 本地持久化（插件目录 `config.json`）
+- ✨ `ZhipuAPIConfig` 支持留空自动读取
+- 📝 文档新增持久化说明
 
 ### v1.1.0
 - ✨ 新增智谱AI图片生成节点（Cogview-3-Flash）

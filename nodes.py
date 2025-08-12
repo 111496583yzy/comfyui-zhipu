@@ -5,6 +5,7 @@ from typing import Tuple, Dict, Any, Optional
 from .api_client import ZhipuAPIClient
 from .config import (ALL_CHAT_MODELS, VISION_CHAT_MODELS, FREE_IMAGE_MODELS, 
                     FREE_VIDEO_MODELS, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TOP_P)
+from .local_config import load_api_key, save_api_key
 
 
 class ZhipuAPIConfig:
@@ -17,7 +18,10 @@ class ZhipuAPIConfig:
                 "api_key": ("STRING", {
                     "multiline": False,
                     "default": "",
-                    "placeholder": "请输入智谱AI API Key"
+                    "placeholder": "请输入智谱AI API Key（留空将从插件目录 config.json 读取）"
+                }),
+                "remember": ("BOOLEAN", {
+                    "default": True,
                 }),
             }
         }
@@ -27,12 +31,26 @@ class ZhipuAPIConfig:
     FUNCTION = "create_client"
     CATEGORY = "ZhipuAI"
 
-    def create_client(self, api_key: str) -> Tuple[ZhipuAPIClient]:
-        """创建智谱AI客户端"""
-        if not api_key.strip():
-            raise ValueError("API Key不能为空")
+    def create_client(self, api_key: str, remember: bool = True) -> Tuple[ZhipuAPIClient]:
+        """创建智谱AI客户端
+        - 若 api_key 非空且 remember=True，则保存到插件目录 config.json
+        - 若 api_key 为空，则尝试从插件目录 config.json 读取
+        """
+        key = (api_key or "").strip()
+        if not key:
+            # 仅从插件目录配置读取
+            key = (load_api_key() or "").strip()
+        if not key:
+            raise ValueError("API Key不能为空（可在此输入一次并勾选记住，或在插件目录 config.json 中设置）")
+
+        # 如果是新输入的且需要记住，则保存到插件目录
+        if api_key.strip() and remember:
+            try:
+                save_api_key(key)
+            except Exception as e:
+                print(f"[ZhipuAPIConfig] 保存API Key失败: {e}")
         
-        client = ZhipuAPIClient(api_key)
+        client = ZhipuAPIClient(key)
         return (client,)
 
 
@@ -498,8 +516,7 @@ class ZhipuVideoGeneration:
             print(error_msg)
             return ("", error_msg)
 
-
-# 节点映射
+# 节点注册
 NODE_CLASS_MAPPINGS = {
     "ZhipuAPIConfig": ZhipuAPIConfig,
     "ZhipuTextChat": ZhipuTextChat,
@@ -511,7 +528,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZhipuAPIConfig": "智谱AI API配置",
-    "ZhipuTextChat": "智谱AI文本对话", 
+    "ZhipuTextChat": "智谱AI文本对话",
     "ZhipuVisionChat": "智谱AI视觉对话",
     "ZhipuChatHistory": "智谱AI对话历史",
     "ZhipuImageGeneration": "智谱AI图片生成",
