@@ -6,6 +6,7 @@ from .api_client import ZhipuAPIClient
 from .config import (ALL_CHAT_MODELS, VISION_CHAT_MODELS, FREE_IMAGE_MODELS, 
                     FREE_VIDEO_MODELS, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TOP_P)
 from .local_config import load_api_key, save_api_key
+from .qwen_blockwise_node import QwenBlockwiseCanny
 
 
 class ZhipuAPIConfig:
@@ -524,6 +525,7 @@ NODE_CLASS_MAPPINGS = {
     "ZhipuChatHistory": ZhipuChatHistory,
     "ZhipuImageGeneration": ZhipuImageGeneration,
     "ZhipuVideoGeneration": ZhipuVideoGeneration,
+    "QwenBlockwiseCanny": QwenBlockwiseCanny,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -533,4 +535,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZhipuChatHistory": "智谱AI对话历史",
     "ZhipuImageGeneration": "智谱AI图片生成",
     "ZhipuVideoGeneration": "智谱AI视频生成",
+    "QwenBlockwiseCanny": "Qwen-Image Blockwise Canny",
 } 
