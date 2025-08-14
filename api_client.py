@@ -153,6 +153,14 @@ class ZhipuAPIClient:
         except Exception:
             pass
     
+    def _clean_response_text(self, text: str) -> str:
+        """清理响应文本中的格式标记"""
+        if not text:
+            return text
+        # 清理可能的格式标记
+        cleaned = text.replace('<|begin_of_box|>', '').replace('<|end_of_box|>', '').strip()
+        return cleaned
+    
     def chat_completion(self,
                        messages: List[Dict[str, Any]],
                        model: str = "glm-4.5",
@@ -271,7 +279,7 @@ class ZhipuAPIClient:
                 if audio_id:
                     text = f"[音频返回] audio_id={audio_id}"
             if text:
-                return text
+                return self._clean_response_text(text)
             # 调试：如果仍然拿不到文本，打印一份简要信息
             if self.debug_enabled:
                 try:
@@ -325,7 +333,7 @@ class ZhipuAPIClient:
                 if audio_id:
                     text = f"[音频返回] audio_id={audio_id}"
             if text:
-                return text
+                return self._clean_response_text(text)
             # 调试：如果仍然拿不到文本，打印一份简要信息
             if self.debug_enabled:
                 try:
