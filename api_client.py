@@ -90,6 +90,30 @@ class ZhipuAPIClient:
         
         return content
     
+    def prepare_multi_image_content(self, text: str, images: List[Union[Image.Image, np.ndarray]]) -> List[Dict[str, Any]]:
+        """准备多图片消息内容"""
+        content = []
+        
+        # 添加文本内容
+        if text:
+            content.append({
+                "type": "text",
+                "text": text
+            })
+        
+        # 添加所有图片内容
+        for image in images:
+            if image is not None:
+                image_base64 = self.image_to_base64(image)
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{image_base64}"
+                    }
+                })
+        
+        return content
+    
     def _is_vision_model(self, model: str) -> bool:
         m = (model or "").lower()
         return m.startswith("glm-4v") or m.startswith("glm-4.1v") or m.startswith("glm-4.5v")
@@ -217,6 +241,60 @@ class ZhipuAPIClient:
         """
         # 准备消息内容（用户消息，可能包含文本+图片）
         content = self.prepare_message_content(prompt, image)
+        
+        messages = []
+        if system_prompt.strip():
+            messages.append({"role": "system", "content": system_prompt.strip()})
+        messages.append({"role": "user", "content": content})
+        
+        # 统一做数值校验
+        temperature_val = self._safe_float(temperature, default=0.7, min_value=0.0, max_value=1.0)
+        max_tokens_val = self._safe_int(max_tokens, default=1024, min_value=1, max_value=8192)
+        
+        # 调用API
+        response = self.chat_completion(
+            messages=messages,
+            model=model,
+            temperature=temperature_val,
+            max_tokens=max_tokens_val,
+            request_id=kwargs.get("request_id"),
+        )
+        
+        # 提取回复内容（兼容 reasoning_content / audio 等）
+        if isinstance(response, dict) and "choices" in response and len(response.get("choices", [])) > 0:
+            msg = (response["choices"][0] or {}).get("message", {})
+            text = (msg.get("content") or "").strip()
+            if not text:
+                text = (msg.get("reasoning_content") or "").strip()
+            if not text and isinstance(msg.get("audio"), dict):
+                audio_id = msg["audio"].get("id")
+                if audio_id:
+                    text = f"[音频返回] audio_id={audio_id}"
+            if text:
+                return text
+            # 调试：如果仍然拿不到文本，打印一份简要信息
+            if self.debug_enabled:
+                try:
+                    print("[ZHIPU_DEBUG] Empty content, raw message:", json.dumps(msg, ensure_ascii=False)[:500])
+                except Exception:
+                    pass
+            raise Exception(f"API未返回文本内容: {response}")
+        else:
+            raise Exception(f"API返回格式异常: {response}")
+    
+    def multi_image_chat(self, 
+                        prompt: str, 
+                        images: List[Union[Image.Image, np.ndarray]],
+                        model: str = "glm-4v-flash",
+                        temperature: float = 0.7,
+                        max_tokens: int = 1024,
+                        system_prompt: str = "",
+                        **kwargs) -> str:
+        """
+        多图片对话接口
+        """
+        # 准备多图片消息内容
+        content = self.prepare_multi_image_content(prompt, images)
         
         messages = []
         if system_prompt.strip():

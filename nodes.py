@@ -6,7 +6,6 @@ from .api_client import ZhipuAPIClient
 from .config import (ALL_CHAT_MODELS, VISION_CHAT_MODELS, FREE_IMAGE_MODELS, 
                     FREE_VIDEO_MODELS, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TOP_P)
 from .local_config import load_api_key, save_api_key
-from .qwen_blockwise_node import QwenBlockwiseCanny
 
 
 class ZhipuAPIConfig:
@@ -213,22 +212,28 @@ class ZhipuVisionChat:
         """生成基于图片的文本回复"""
         try:
             # 转换图片格式（从ComfyUI的tensor格式转换）
+            images_list = []
             if isinstance(image, torch.Tensor):
                 # ComfyUI图片格式通常是 [batch, height, width, channels]
                 if image.dim() == 4:
-                    image = image[0]  # 取第一张图片
-                # 转换为numpy数组
-                image_np = image.cpu().numpy()
+                    # 处理批次中的所有图片
+                    batch_size = image.shape[0]
+                    for i in range(batch_size):
+                        img_np = image[i].cpu().numpy()
+                        images_list.append(img_np)
+                else:
+                    # 单张图片
+                    images_list.append(image.cpu().numpy())
             else:
-                image_np = image
+                images_list.append(image)
             
             # 若未填写文本提示，提供一个默认提示，避免只有图片导致400
-            safe_prompt = prompt.strip() or "请描述这张图片的关键信息与要点。"
+            safe_prompt = prompt.strip() or "请描述这些图片的关键信息与要点。"
             
-            # 调用简单对话接口（将 seed 写入 request_id 用于去缓存）
-            reply = zhipu_client.simple_chat(
+            # 调用多图片对话接口（将 seed 写入 request_id 用于去缓存）
+            reply = zhipu_client.multi_image_chat(
                 prompt=safe_prompt,
-                image=image_np,
+                images=images_list,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -525,15 +530,13 @@ NODE_CLASS_MAPPINGS = {
     "ZhipuChatHistory": ZhipuChatHistory,
     "ZhipuImageGeneration": ZhipuImageGeneration,
     "ZhipuVideoGeneration": ZhipuVideoGeneration,
-    "QwenBlockwiseCanny": QwenBlockwiseCanny,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZhipuAPIConfig": "智谱AI API配置",
-    "ZhipuTextChat": "智谱AI文本对话",
+    "ZhipuTextChat": "智谱AI文本对话", 
     "ZhipuVisionChat": "智谱AI视觉对话",
     "ZhipuChatHistory": "智谱AI对话历史",
     "ZhipuImageGeneration": "智谱AI图片生成",
     "ZhipuVideoGeneration": "智谱AI视频生成",
-    "QwenBlockwiseCanny": "Qwen-Image Blockwise Canny",
 } 
