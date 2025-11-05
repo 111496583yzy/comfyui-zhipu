@@ -129,12 +129,14 @@ class ZhipuTextChat:
             })
             
             # 调用API（将 seed 写入 request_id 用于去缓存）
+            # 确保 request_id 长度至少为 6 个字符（智谱AI要求）
+            request_id = f"txt-{str(seed).zfill(4)}" if seed else None
             response = zhipu_client.chat_completion(
                 messages=messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                request_id=f"txt-{seed}" if seed else None,
+                request_id=request_id,
             )
             
             # 提取回复内容
@@ -231,6 +233,8 @@ class ZhipuVisionChat:
             safe_prompt = prompt.strip() or "请描述这些图片的关键信息与要点。"
             
             # 调用多图片对话接口（将 seed 写入 request_id 用于去缓存）
+            # 确保 request_id 长度至少为 6 个字符（智谱AI要求）
+            request_id = f"vis-{str(seed).zfill(4)}" if seed else None
             reply = zhipu_client.multi_image_chat(
                 prompt=safe_prompt,
                 images=images_list,
@@ -238,7 +242,7 @@ class ZhipuVisionChat:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 system_prompt=system_prompt,
-                request_id=f"vis-{seed}" if seed else None,
+                request_id=request_id,
             )
             
             return (reply,)
@@ -357,12 +361,14 @@ class ZhipuChatHistory:
             })
             
             # 调用API（将 seed 写入 request_id 用于去缓存）
+            # 确保 request_id 长度至少为 6 个字符（智谱AI要求）
+            request_id = f"hist-{str(seed).zfill(4)}" if seed else None
             response = zhipu_client.chat_completion(
                 messages=messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                request_id=f"hist-{seed}" if seed else None,
+                request_id=request_id,
             )
             
             # 提取回复内容
