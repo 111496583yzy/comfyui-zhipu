@@ -1,9 +1,13 @@
 import os
 import torch
+import requests
+import io
+import numpy as np
+from PIL import Image
 from typing import Tuple, Dict, Any, Optional
 
 from .api_client import ZhipuAPIClient
-from .config import (ALL_CHAT_MODELS, VISION_CHAT_MODELS, FREE_IMAGE_MODELS, 
+from .config import (ALL_CHAT_MODELS, VISION_CHAT_MODELS, ALL_IMAGE_MODELS,
                     FREE_VIDEO_MODELS, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TOP_P)
 from .local_config import load_api_key, save_api_key
 
@@ -390,7 +394,37 @@ class ZhipuChatHistory:
 
 
 class ZhipuImageGeneration:
-    """智谱AI图片生成节点"""
+    """智谱AI图片生成节点
+    
+    支持模型：
+    - cogview-3-flash: CogView-3快速版（免费）
+    - glm-image: GLM-Image新旗舰图像生成模型（0.1元/次）
+      - 推荐尺寸: 1280x1280, 1568x1056, 1056x1568, 1472x1088, 1088x1472, 1728x960, 960x1728
+      - 自定义尺寸: 长宽需在512px-2048px范围内，且长宽均需为32的整数倍
+    """
+    
+    # CogView-3 支持的尺寸
+    COGVIEW_SIZES = [
+        "1024x1024",  # 1:1
+        "768x1344",   # 9:16 竖版
+        "1344x768",   # 16:9 横版
+        "1536x1024",  # 3:2
+        "1024x1536",  # 2:3
+    ]
+    
+    # GLM-Image 推荐尺寸
+    GLM_IMAGE_SIZES = [
+        "1280x1280",  # 1:1
+        "1568x1056",  # 约 3:2
+        "1056x1568",  # 约 2:3
+        "1472x1088",  # 约 4:3
+        "1088x1472",  # 约 3:4
+        "1728x960",   # 16:9
+        "960x1728",   # 9:16
+    ]
+    
+    # 合并所有预设尺寸
+    ALL_PRESET_SIZES = list(dict.fromkeys(COGVIEW_SIZES + GLM_IMAGE_SIZES))  # 去重保持顺序
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -402,45 +436,99 @@ class ZhipuImageGeneration:
                     "default": "一只可爱的熊猫在竹林中",
                     "placeholder": "请输入图片描述"
                 }),
-                "model": (FREE_IMAGE_MODELS, {
-                    "default": "cogview-3-flash"
+                "model": (ALL_IMAGE_MODELS, {
+                    "default": "glm-image"
                 }),
-                "size": (["1024x1024", "768x1344", "1344x768", "1536x1024", "1024x1536"], {
-                    "default": "1024x1024"
+                "size": (["自定义"] + cls.ALL_PRESET_SIZES, {
+                    "default": "1280x1280"
+                }),
+            },
+            "optional": {
+                "custom_width": ("INT", {
+                    "default": 1280,
+                    "min": 512,
+                    "max": 2048,
+                    "step": 32,
+                    "tooltip": "自定义宽度（仅在size选择'自定义'时生效），需为32的整数倍"
+                }),
+                "custom_height": ("INT", {
+                    "default": 1280,
+                    "min": 512,
+                    "max": 2048,
+                    "step": 32,
+                    "tooltip": "自定义高度（仅在size选择'自定义'时生效），需为32的整数倍"
                 }),
                 "quality": (["standard", "hd"], {
-                    "default": "standard"
+                    "default": "standard",
+                    "tooltip": "图片质量（仅CogView系列支持）"
                 }),
                 "n": ("INT", {
                     "default": 1,
                     "min": 1,
                     "max": 4,
-                    "step": 1
+                    "step": 1,
+                    "tooltip": "生成图片数量（仅CogView系列支持）"
+                }),
+                "disable_watermark": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "是否去水印（需在智谱AI开放平台签署免责声明后生效）"
                 }),
             }
         }
 
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("image_urls", "response_info")
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("image", "image_urls", "response_info")
     FUNCTION = "generate_image"
     CATEGORY = "ZhipuAI"
 
     def generate_image(self, 
                       zhipu_client: ZhipuAPIClient, 
                       prompt: str,
-                      model: str = "cogview-3-flash",
-                      size: str = "1024x1024",
+                      model: str = "glm-image",
+                      size: str = "1280x1280",
+                      custom_width: int = 1280,
+                      custom_height: int = 1280,
                       quality: str = "standard",
-                      n: int = 1) -> Tuple[str, str]:
+                      n: int = 1,
+                      disable_watermark: bool = False) -> Tuple[torch.Tensor, str, str]:
         """生成图片"""
         try:
-            response = zhipu_client.generate_image(
-                prompt=prompt,
-                model=model,
-                size=size,
-                quality=quality,
-                n=n
-            )
+            # 处理自定义尺寸
+            if size == "自定义":
+                # 确保尺寸是32的倍数
+                custom_width = (custom_width // 32) * 32
+                custom_height = (custom_height // 32) * 32
+                # 确保在范围内
+                custom_width = max(512, min(2048, custom_width))
+                custom_height = max(512, min(2048, custom_height))
+                actual_size = f"{custom_width}x{custom_height}"
+            else:
+                actual_size = size
+            
+            # 准备参数
+            kwargs = {
+                "watermark_enabled": not disable_watermark
+            }
+            
+            # 根据模型类型调用不同的参数
+            if model == "glm-image":
+                # GLM-Image 只支持 prompt 和 size 以及 watermark_enabled
+                response = zhipu_client.generate_image(
+                    prompt=prompt,
+                    model=model,
+                    size=actual_size,
+                    **kwargs
+                )
+            else:
+                # CogView 系列支持更多参数
+                response = zhipu_client.generate_image(
+                    prompt=prompt,
+                    model=model,
+                    size=actual_size,
+                    quality=quality,
+                    n=n,
+                    **kwargs
+                )
             
             # 提取图片URLs
             if "data" in response and len(response["data"]) > 0:
@@ -450,16 +538,38 @@ class ZhipuImageGeneration:
                         image_urls.append(item["url"])
                 
                 urls_text = "\n".join(image_urls)
-                info_text = f"成功生成 {len(image_urls)} 张图片，模型: {model}"
+                info_text = f"成功生成 {len(image_urls)} 张图片，模型: {model}, 尺寸: {actual_size}"
                 
-                return (urls_text, info_text)
+                # 下载并转换为ComfyUI格式 (Batch, Height, Width, Channel)
+                output_images = []
+                for url in image_urls:
+                    try:
+                        resp = requests.get(url, timeout=60)
+                        resp.raise_for_status()
+                        img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+                        img_np = np.array(img).astype(np.float32) / 255.0
+                        img_tensor = torch.from_numpy(img_np)[None,] # Add batch dimension
+                        output_images.append(img_tensor)
+                    except Exception as e:
+                        print(f"下载图片失败 {url}: {e}")
+                
+                if output_images:
+                    final_image = torch.cat(output_images, dim=0)
+                    return (final_image, urls_text, info_text)
+                else:
+                    # 下载失败返回空黑色图片
+                    empty = torch.zeros((1, 512, 512, 3), dtype=torch.float32)
+                    return (empty, urls_text, info_text + " (图片下载失败)")
+                    
             else:
                 raise Exception(f"图片生成API返回格式异常: {response}")
             
         except Exception as e:
             error_msg = f"图片生成失败: {str(e)}"
             print(error_msg)
-            return ("", error_msg)
+            # 失败返回空图片和错误信息
+            empty = torch.zeros((1, 512, 512, 3), dtype=torch.float32)
+            return (empty, "", error_msg)
 
 
 class ZhipuVideoGeneration:

@@ -20,6 +20,14 @@ FREE_IMAGE_MODELS = [
     "cogview-3-flash"
 ]
 
+# 付费图片生成模型
+PAID_IMAGE_MODELS = [
+    "glm-image"      # GLM-Image 新旗舰图像生成模型（0.1元/次）
+]
+
+# 所有图片生成模型
+ALL_IMAGE_MODELS = FREE_IMAGE_MODELS + PAID_IMAGE_MODELS
+
 # 免费视频生成模型
 FREE_VIDEO_MODELS = [
     "cogvideox-flash"

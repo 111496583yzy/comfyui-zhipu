@@ -8,7 +8,7 @@ import io
 import numpy as np
 
 from .config import (ZHIPU_CHAT_ENDPOINT, ZHIPU_IMAGE_ENDPOINT, ZHIPU_VIDEO_ENDPOINT, 
-                    ALL_CHAT_MODELS, FREE_IMAGE_MODELS, FREE_VIDEO_MODELS)
+                    ALL_CHAT_MODELS, ALL_IMAGE_MODELS, FREE_VIDEO_MODELS)
 
 
 class ZhipuAPIClient:
@@ -346,10 +346,11 @@ class ZhipuAPIClient:
     
     def generate_image(self,
                       prompt: str,
-                      model: str = "cogview-3-flash",
-                      size: str = "1024x1024",
+                      model: str = "glm-image",
+                      size: str = "1280x1280",
                       n: int = 1,
                       quality: str = "standard",
+                      watermark_enabled: bool = True,
                       **kwargs) -> Dict[str, Any]:
         """
         调用智谱AI图片生成接口
@@ -357,25 +358,37 @@ class ZhipuAPIClient:
         Args:
             prompt: 图片描述提示词
             model: 使用的图片生成模型
-            size: 图片尺寸 (1024x1024, 768x1344, 1344x768等)
-            n: 生成图片数量
-            quality: 图片质量 (standard, hd)
+                - cogview-3-flash: CogView-3快速版（免费）
+                - glm-image: GLM-Image新旗舰图像生成模型（0.1元/次）
+            size: 图片尺寸
+                - CogView-3: 1024x1024, 768x1344, 1344x768, 1536x1024, 1024x1536
+                - GLM-Image: 1280x1280, 1568x1056, 1056x1568, 1472x1088, 1088x1472, 1728x960, 960x1728
+                  或自定义尺寸（512-2048，32的倍数）
+            n: 生成图片数量（仅CogView系列支持）
+            quality: 图片质量 (standard, hd)（仅CogView系列支持）
+            watermark_enabled: 是否添加水印（默认True）。False需在平台签署免责声明。
             **kwargs: 其他参数
         
         Returns:
             API响应结果，包含生成的图片URL
         """
-        if model not in FREE_IMAGE_MODELS:
-            raise ValueError(f"不支持的图片生成模型: {model}. 支持的模型: {FREE_IMAGE_MODELS}")
+        if model not in ALL_IMAGE_MODELS:
+            raise ValueError(f"不支持的图片生成模型: {model}. 支持的模型: {ALL_IMAGE_MODELS}")
         
+        # 构建请求payload
         payload = {
             "model": model,
             "prompt": prompt,
             "size": size,
-            "n": n,
-            "quality": quality,
-            **kwargs
+            "watermark_enabled": watermark_enabled,
         }
+        
+        # GLM-Image 只支持 prompt 和 size，CogView 支持更多参数
+        if model != "glm-image":
+            payload["n"] = n
+            payload["quality"] = quality
+            # 添加其他可选参数
+            payload.update(kwargs)
         
         try:
             response = requests.post(
