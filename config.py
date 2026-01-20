@@ -8,6 +8,8 @@ ZHIPU_VIDEO_RESULT_ENDPOINT = f"{ZHIPU_API_BASE_URL}/videos/result"
 
 # 免费对话模型列表
 FREE_CHAT_MODELS = [
+    "glm-4.7-flash",           # GLM-4.7快速版（免费）
+    "glm-4.6v-flash",          # GLM-4.6V视觉快速版（免费，支持视觉）
     "glm-4.5-flash",           # GLM-4.5快速版（免费）
     "glm-4.1v-thinking-flash", # GLM-4.1V思考版（免费，支持视觉）
     "glm-4-flash-250414",      # GLM-4特定版本（免费）
@@ -35,8 +37,12 @@ FREE_VIDEO_MODELS = [
 
 # 付费对话模型（根据官方文档更新）
 PAID_CHAT_MODELS = [
-    # GLM-4.6系列（最新旗舰模型）
+    # GLM-4.7系列
+    "glm-4.7",                    # GLM-4.7旗舰模型
+
+    # GLM-4.6系列
     "glm-4.6",                    # GLM-4.6旗舰模型（200K上下文，128K输出）
+    "glm-4.6v",                   # GLM-4.6V视觉模型（支持视觉）
     
     # GLM-4.5系列
     "glm-4.5",                    # GLM-4.5标准版（128K上下文，96K输出）
@@ -72,10 +78,12 @@ ALL_CHAT_MODELS = FREE_CHAT_MODELS + PAID_CHAT_MODELS
 # 视觉对话模型（支持图片理解的模型）
 VISION_CHAT_MODELS = [
     # 免费视觉模型
+    "glm-4.6v-flash",           # GLM-4.6V视觉快速版（免费，支持视觉）
     "glm-4.1v-thinking-flash",  # GLM-4.1V思考版（免费，支持视觉）
     "glm-4v-flash",             # GLM-4V快速版（免费，支持视觉）
     
     # 付费视觉模型
+    "glm-4.6v",                 # GLM-4.6V视觉模型（支持视觉）
     "glm-4.5v",                 # GLM-4.5V视觉模型（支持视觉理解）
     "glm-4v",                   # GLM-4V标准版（支持视觉）
     "glm-4v-plus",              # GLM-4V增强版（支持视觉）
